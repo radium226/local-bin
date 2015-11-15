@@ -1,0 +1,111 @@
+#!/bin/bash
+
+export KDB="${HOME}/Dropbox/Miscellaneous/Credentials/Credentials.kdb"
+export KEY="${HOME}/Miscellaneous/Credentials/Credentials.key"
+export DIR="Others"
+
+put_password_to_clipboard()
+{
+	declare account_pattern="${1}"
+	if [ -z "${account_pattern}" ]; then
+		echo "put_password_to_clipboard: The name of the account_pattern is undefined. " >&2
+		return 1
+	fi
+	
+	declare account="$( list_accounts | grep -i "--" "${account_pattern}" )"
+	
+	declare user="$( account_user "${account}" )"
+	declare password="$( account_password "${account}" )"
+	
+	echo -n "${password}" | xclip -selection "clipboard"
+	
+	echo "user=${user}"
+	echo "password=${password}"
+	
+	return 0
+}
+
+
+__kpcli_expect()
+{
+	expect <<EOEXPECT
+log_user 0
+spawn /usr/bin/kpcli --kdb=${KDB} --key=${KEY}
+expect "*master password*"
+send "\r"
+expect "kpcli:*"
+send "cd ${DIR}\r"
+expect "kpcli:*"
+$( cat )
+send "exit\r"
+EOEXPECT
+}
+
+list_accounts()
+{
+	__kpcli_expect <<EOEXPECT | awk '
+function ltrim(s) { sub(/^[ \t]+/, "", s); return s }
+function rtrim(s) { sub(/[ \t]+$/, "", s); return s }
+function trim(s)  { return rtrim(ltrim(s)); }
+
+NR > 2 {
+	a = ""
+	for (i = 2; i < NF; i++) {
+		a = sprintf("%s %s", a, $i)
+	}
+	a = trim(a)
+	if (a != "") {
+		printf("%s\n", a)
+	}
+}
+'
+log_user 1
+send "ls\r"
+expect "kpcli:*"
+log_user 0
+EOEXPECT
+}
+
+account_password()
+{
+	declare account="${1}"
+	if [ -z "${account}" ]; then
+		echo "account_password: The account is undefined. " >&2
+		return 1
+	fi
+
+	__kpcli_expect <<EOEXPECT | awk -F ":" '
+function ltrim(s) { sub(/^[ \t]+/, "", s); return s }
+function rtrim(s) { sub(/[ \t]+$/, "", s); return s }
+function trim(s)  { return rtrim(ltrim(s)); }
+
+/Pass/ {printf("%s\n", trim($2))}'
+log_user 1
+send "show -f \"${account}\"\r"
+expect "kpcli:*"
+log_user 0
+EOEXPECT
+}
+
+account_user()
+{
+	declare account="${1}"
+	if [ -z "${account}" ]; then
+		echo "account_user: The account is undefined. " >&2
+		return 1
+	fi
+
+	__kpcli_expect <<EOEXPECT | awk -F ":" '
+function ltrim(s) { sub(/^[ \t]+/, "", s); return s }
+function rtrim(s) { sub(/[ \t]+$/, "", s); return s }
+function trim(s)  { return rtrim(ltrim(s)); }
+
+/Uname/ {printf("%s\n", trim($2))}'
+log_user 1
+send "show -f \"${account}\"\r"
+expect "kpcli:*"
+log_user 0
+EOEXPECT
+}
+
+put_password_to_clipboard "${@}"

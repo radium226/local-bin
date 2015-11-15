@@ -1,0 +1,68 @@
+#!/bin/bash
+
+#declare xfce4_conf="${HOME}/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
+#declare accounts_service_conf="/usr/lib/AccountsService/user/${USER}"
+#declare wallpaper=
+#while inotifywait "${xfce4_conf}"; do
+#	wallpaper="$(  )"
+#done
+
+export XFCE4_PROPERTY="/backdrop"
+export XFCE4_MONITOR_PROPERTY_PATTERN="^set:[[:space:]]+(${XFCE4_PROPERTY}/.*/last-image)$"
+export XFCE4_CHANNEL="xfce4-desktop"
+
+export LIGHTDM_GREETER="/etc/lightdm/lightdm-gtk-greeter.conf"
+
+xfce4::update_accounts_service()
+{
+	local property=
+	local wallpaper=
+	xfconf-query -c "${XFCE4_CHANNEL}" -p "${XFCE4_PROPERTY}" -m | gred "${XFCE4_MONITOR_PROPERTY_PATTERN}" | while read property; do
+		wallpaper="$( xfconf-query -c "${XFCE4_CHANNEL}" -p "${property}" )"
+		accounts_service::modify_background "${wallpaper}"
+		lightdm::modify_background "${wallpaper}"
+	done
+}
+
+accounts_service::account()
+{
+	echo "/var/lib/AccountsService/users/${USER}"
+}
+
+accounts_service::modify_background()
+{
+	local background="${1}"
+	local account="$( accounts_service::account )"
+	if grep -q "${Background}" "${account}"; then
+		sudo sed -i "s,^Background=\(.*\)$,Background=${background},g" "${account}"
+	else
+		echo "Background=${background}" | sudo tee -a "${account}" >"/dev/null" 2>&1
+	fi
+}
+
+lightdm::modify_background()
+{
+	local background="${1}"
+	local background_name="$( basename "${background}" )"
+	local fixed_background="/var/lib/lightdm/${background_name}"
+	sudo cp "${background}" "${fixed_background}"
+	sudo chown "lightdm:lightdm" "${fixed_background}"
+	if grep -q "background =" "${LIGHTDM_GREETER}"; then
+		sudo sed -i "s,^background = \(.*\)$,background = ${fixed_background},g" "${LIGHTDM_GREETER}"
+	else
+		echo "background = ${fixed_background}" | sudo tee -a "${LIGHTDM_GREETER}" >"/dev/null" 2>&1
+	fi
+
+}
+
+gred()
+{
+	declare grep_pattern="${1:-'(.*)$'}"
+	declare group_position=${2:-1}
+	grep --line-buffered --extended-regexp "${grep_pattern}" | sed -nur "s,${grep_pattern},\\${group_position},p"
+
+}
+
+xfce4::update_accounts_service
+
+
