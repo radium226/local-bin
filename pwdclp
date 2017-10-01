@@ -1,9 +1,5 @@
 #!/bin/bash
 
-export KDB="${HOME}/Dropbox/Miscellaneous/Credentials/Credentials.kdb"
-export KEY="${HOME}/Miscellaneous/Credentials/Credentials.key"
-export DIR="Others"
-
 put_password_to_clipboard()
 {
 	declare account_pattern="${1}"
@@ -11,17 +7,17 @@ put_password_to_clipboard()
 		echo "put_password_to_clipboard: The name of the account_pattern is undefined. " >&2
 		return 1
 	fi
-	
+
 	declare account="$( list_accounts | grep -i "--" "${account_pattern}" )"
-	
+
 	declare user="$( account_user "${account}" )"
 	declare password="$( account_password "${account}" )"
-	
+
 	echo -n "${password}" | xclip -selection "clipboard"
-	
+
 	echo "user=${user}"
 	echo "password=${password}"
-	
+
 	return 0
 }
 
@@ -107,5 +103,15 @@ expect "kpcli:*"
 log_user 0
 EOEXPECT
 }
+
+profile=default
+if basename "${0}" | grep -qE '^pwdclp-.+$'; then
+	profile="$( basename "${0}" | sed 's,pwdclp-,,g' )"
+	if [[ ! -f "${HOME}/.config/pwdclp/${profile}" ]]; then
+			 profile="default"
+	fi
+fi
+
+. "${HOME}/.config/pwdclp/${profile}"
 
 put_password_to_clipboard "${@}"
