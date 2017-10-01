@@ -1,0 +1,81 @@
+#!/bin/env python
+
+import os.path as p
+import sys as s
+
+class Steps:
+
+    def __init__(self, lower_value, upper_value, step_count):
+        self._bound_values = [round(lower_value + step_index * (upper_value - lower_value) / step_count) for step_index in range(step_count)]
+        self._bound_values[len(self._bound_values) - 1] = upper_value # Quick Fix
+
+    def _bound_value(self, value):
+        return min(self._bound_values, key=lambda bound_value: abs(bound_value - value))
+
+    def _step_index(self, value):
+        return self._bound_values.index(self._bound_value(value))
+
+    def next(self, value):
+        next_step_index = min(self._step_index(value) + 1, len(self._bound_values) - 1)
+        return self._bound_values[next_step_index]
+
+    def previous(self, value):
+        previous_step_index = max(self._step_index(value) - 1, 0)
+        return self._bound_values[previous_step_index]
+
+    def __repr__(self):
+        return 'Steps(_bound_values=%s)' % str(self._bound_values)
+
+class Brightness:
+
+    def __init__(self, sysfs_folder_path, min_value, step_count):
+        self._sysfs_folder_path = sysfs_folder_path
+        self._steps = Steps(min_value, self._max(), step_count)
+
+    def _read_value(self, sysfs_file_name):
+        value = '-1'
+        with open(p.join(self._sysfs_folder_path, sysfs_file_name)) as f:
+            value = f.read().strip()
+        return value
+
+    def _write_value(self, sysfs_file_name, value):
+        with open(p.join(self._sysfs_folder_path, sysfs_file_name), 'w') as f:
+            f.write(value)
+
+    def _max(self):
+        return int(self._read_value('max_brightness'))
+
+    def _get(self):
+        return int(self._read_value('brightness'))
+
+    def _set(self, value):
+        self._write_value('brightness', str(value))
+
+    def up(self):
+        self._set(self._steps.next(self._get()))
+
+    def down(self):
+        self._set(self._steps.previous(self._get()))
+
+    def steps(self):
+        return self._steps
+
+    @classmethod
+    def of(cls, sysfs_folder_path, min_value = 0, step_count = 10):
+        return Brightness(sysfs_folder_path, min_value, step_count)
+
+DEVICES = {
+    'screen': Brightness.of('/sys/class/backlight/intel_backlight/', 25, 4),
+    'keyboard': Brightness.of('/sys/class/leds/smc::kbd_backlight/', 0, 3)
+}
+
+ACTIONS = {
+    'up': lambda p: p.up(),
+    'down': lambda p: p.down()
+}
+
+if __name__ == '__main__':
+    arguments = s.argv[1:]
+    device = arguments[0]
+    action = arguments[1]
+    ACTIONS[action](DEVICES[device])
