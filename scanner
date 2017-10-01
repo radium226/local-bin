@@ -1,0 +1,26 @@
+#!/bin/bash
+
+export DEVICE='hpaio:/net/photosmart_5510_series?ip=192.168.0.10&queue=false'
+export SANE_SIZE_OPTS="-l 0 -t 0 -x 215 -y 297"
+export SANE_RESOLUTION_OPTS="--resolution 300"
+export SANE_COLOR_OPTS="--mode Color"
+export SANE_FORMAT_OPTS="--format 'png'"
+
+export TEMP_PDF="$( mktemp --suffix='.pdf' )"
+
+#-colorspace "Gray"
+
+scanimage \
+  --device="${DEVICE}" \
+  ${SANE_FORMAT_OPTS} \
+  ${SANE_SIZE_OPTS} \
+  ${SANE_COLOR_OPTS} \
+  ${SANE_RESOLUTION_OPTS} | \
+convert \
+  - \
+  pdf:- \
+    >"${TEMP_PDF}"
+
+shrinkpdf "${TEMP_PDF}" >"${1:-./scan.pdf}"
+
+rm "${TEMP_PDF}"
