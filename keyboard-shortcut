@@ -39,6 +39,7 @@ class Brightness:
         return value
 
     def _write_value(self, sysfs_file_name, value):
+        print("%s=%s" % (sysfs_file_name, value))
         with open(p.join(self._sysfs_folder_path, sysfs_file_name), 'w') as f:
             f.write(value)
 
@@ -65,7 +66,7 @@ class Brightness:
         return Brightness(sysfs_folder_path, min_value, step_count)
 
 DEVICES = {
-    'screen': Brightness.of('/sys/class/backlight/intel_backlight/', 25, 4),
+    'screen': Brightness.of('/sys/class/backlight/intel_backlight/', 25, 20),
     'keyboard': Brightness.of('/sys/class/leds/smc::kbd_backlight/', 0, 3)
 }
 
