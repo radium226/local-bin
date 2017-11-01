@@ -1,0 +1,1 @@
+vpnshift -c /etc/openvpn/client/Japan.conf /usr/bin/transmission-gtk

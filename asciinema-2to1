@@ -1,0 +1,3 @@
+#!/bin/bash
+
+asciinema rec -c "cd /home/adrien/.tmp/asciinema/asciinema ; python3 -m asciinema play $( readlink -f "${1}" )" "${2}"
