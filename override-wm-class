@@ -130,10 +130,11 @@ class Window:
         if type(pid) == int:
             return cls.by_pid(PID(pid))
 
-        #windows = filter(lambda window: window.pid.is_child_of(pid) or window.pid == pid, Window.list())
+        windows = filter(lambda window: (window.pid.is_child_of(pid) or window.pid == pid) if window.pid else False, Window.list())
+        return windows
         #windows_and_distances = map(lambda window: (window, window.pid.distance(pid)), windows)
         #return min(windows_and_distances, key=lambda t: t[1])[0]
-        return list(filter(lambda window: window.pid == pid, Window.list()))
+        #return list(filter(lambda window: window.pid == pid, Window.list()))
 
     @classmethod
     def by_instance(cls, instance_value):
