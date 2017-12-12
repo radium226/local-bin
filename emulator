@@ -1,0 +1,18 @@
+#!/bin/bash
+
+cd "${HOME}/Android/Sdk/tools"
+
+if [[ "${1}" = "--override-wm-class" ]]; then
+	shift
+	override-wm-class \
+		--instance="emulator" \
+		--class="Emulator" \
+		--pause-duration=5 \
+		--match-window="net_wm_name:^Android Emulator" \
+		-- \
+		./emulator "${@}"
+else
+	./emulator "${@}"
+fi
+
+cd -

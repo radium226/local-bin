@@ -1,0 +1,212 @@
+#!/bin/env python3
+
+from Xlib.display import Display
+from Xlib import X, protocol
+from pprint import pprint
+import psutil
+import argparse
+import subprocess as sp
+from time import sleep
+import re
+
+def get_dict_attr(obj, attr):
+    for obj in [obj] + obj.__class__.mro():
+        if attr in obj.__dict__:
+            return obj.__dict__[attr]
+    raise AttributeError
+
+class PID:
+
+    def __init__(self, value):
+        self._value = int(value)
+
+    @property
+    def value(self):
+        return self._value
+
+    def distance(self, other_pid):
+        return self._distance_between(self._value, other_pid._value)
+
+    @classmethod
+    def _distance_between(cls, parent_pid, child_pid):
+        parent = psutil.Process(parent_pid)
+        child = psutil.Process(child_pid)
+        distance = 0
+        while parent.pid != child.pid:
+            distance = distance + 1
+            child = child.parent()
+            if not child:
+                return None
+        return distance
+
+    def is_child_of(self, pid):
+        if type(pid) in [str, int]:
+            return is_child_of(PID(pid))
+
+        return pid.value in list(map(lambda process: process.pid, psutil.Process(self._value).children(recursive=True)))
+
+    def __str__(self):
+        return "%s" % self.value
+
+    def __eq__(self, other):
+        return self.value == other.value if other else False
+
+class Window:
+
+    DISPLAY = Display()
+
+    def __init__(self, wid):
+        self._wid = wid
+        self._window = self.DISPLAY.create_resource_object("window", wid)
+
+    @classmethod
+    def for_wid(cls, wid):
+        return cls(wid)
+
+    @property
+    def net_wm_pid(self):
+        ATOM = self.DISPLAY.get_atom('_NET_WM_PID')
+        atom = self._window.get_full_property(ATOM, X.AnyPropertyType)
+        if atom:
+            value = atom.value[0]
+        else:
+            value = None
+        return value
+
+    @property
+    def wm_class(self):
+        values = self._window.get_wm_class()
+        if values:
+            return values
+        else:
+            return (None, None)
+
+    @wm_class.setter
+    def wm_class(self, values):
+        (instance_value, class_value) = values
+        self._window.set_wm_class(instance_value, class_value)
+        self.DISPLAY.flush()
+
+    @property
+    def pid(self):
+        net_wm_pid = self.net_wm_pid
+        return PID(net_wm_pid) if net_wm_pid else None
+
+    @property
+    def net_wm_name(self):
+        ATOM = self.DISPLAY.get_atom('_NET_WM_NAME')
+        atom = self._window.get_full_property(ATOM, X.AnyPropertyType)
+        return self._atom_value(atom)
+
+    @property
+    def wm_name(self):
+        ATOM = self.DISPLAY.get_atom('WM_NAME')
+        atom = self._window.get_full_property(ATOM, X.AnyPropertyType)
+        return self._atom_value(atom)
+
+    @staticmethod
+    def _atom_value(atom, split=False):
+        if atom is None:
+            return None
+
+        value = atom.value
+
+        if type(value) == bytes:
+            if split:
+                return list(filter(lambda part: len(part) > 0, [part.decode("utf8") for part in value.split(b"\x00")]))
+            else:
+                return value.decode("utf-8")
+
+        return value
+
+    @classmethod
+    def list(cls):
+        NET_CLIENT_LIST_ATOM = cls.DISPLAY.get_atom('_NET_CLIENT_LIST')
+        root_window = cls.DISPLAY.screen().root
+        return map(Window, root_window.get_full_property(NET_CLIENT_LIST_ATOM, X.AnyPropertyType).value)
+
+    @classmethod
+    def by_pid(cls, pid):
+        if type(pid) == int:
+            return cls.by_pid(PID(pid))
+
+        #windows = filter(lambda window: window.pid.is_child_of(pid) or window.pid == pid, Window.list())
+        #windows_and_distances = map(lambda window: (window, window.pid.distance(pid)), windows)
+        #return min(windows_and_distances, key=lambda t: t[1])[0]
+        return list(filter(lambda window: window.pid == pid, Window.list()))
+
+    @classmethod
+    def by_instance(cls, instance_value):
+        for window in Window.list():
+            current_instance_value, class_value = window.wm_class
+            if current_instance_value == instance_value:
+                return window
+        return None
+
+    def __str__(self):
+        return "Window(net_wm_pid=%s, wm_class=%s, net_wm_name=%s, wm_name=%s)" % (self.net_wm_pid, self.wm_class, self.net_wm_name, self.wm_name)
+
+    def __repr__(self):
+        return str(self)
+
+    def unmap(self):
+        self._window.unmap()
+        self.DISPLAY.flush()
+
+    def map(self):
+        self._window.map()
+        self.DISPLAY.flush()
+
+    def remap(self, pause_duration=.250):
+        self.unmap()
+        sleep(pause_duration)
+        self.map()
+
+    # TODO Make this better
+    def match(self, query):
+        if query == "*":
+            return True
+
+        attr_name, attr_value_pattern = query.split(":")
+        attr_value = get_dict_attr(self, attr_name).fget(self)
+        return re.match(attr_value_pattern, attr_value)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run program and force WM_CLASS")
+
+    # Remap window
+    parser.add_argument("--no-remap", dest="no_remap", action='store_const', const=True, default=False, help="Remap window after setting WM_CLASS")
+    parser.add_argument("--remap-pause-duration", dest="remap_pause_duration", type=float, default=.250, help="Duration betwen unmap and map when remapping window after setting WM_CLASS")
+
+    # Values to set to WM_CLASS
+    parser.add_argument("--instance", dest="instance_value", help="The value of the instance part of WM_CLASS")
+    parser.add_argument("--class", dest="class_value", help="The value of the class part of WM_CLASS")
+    parser.add_argument("--pause-duration", dest="pause_duration", type=float, help="Pause before setting WM_CLASS", default=.250)
+
+    # Matcher
+    parser.add_argument("--match-window", dest="match_window", type=str, help="Match a particular window", default="*")
+
+    # Actual process to run
+    parser.add_argument("subprocess_arguments", metavar="ARGUMENT", nargs="+", help="Process to run")
+
+    arguments = parser.parse_args()
+
+    subprocess = sp.Popen(arguments.subprocess_arguments)
+    subprocess_pid = subprocess.pid
+    sleep(arguments.pause_duration)
+
+    #print(" ==> %s" % subprocess.pid)
+    #for w in Window.list():
+    #    print(" --> %s / %s" % (w.wm_name, w.pid))
+
+    for window in filter(lambda window: window.match(arguments.match_window), Window.by_pid(subprocess.pid)):
+        old_instance_value, old_class_value = window.wm_class
+        new_instance_value = arguments.instance_value if arguments.instance_value else old_instance_value
+        new_class_value = arguments.class_value if arguments.class_value else old_class_value
+        window.wm_class = (new_instance_value, new_class_value)
+
+        if not arguments.no_remap:
+            window.remap(arguments.remap_pause_duration)
+
+    subprocess.wait()
